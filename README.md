@@ -158,6 +158,6 @@ Sau khi nạp module và chạy chương trình người dùng mẫu, bạn nên
 - https://github.com/yourusername/bmp180-linux-driver
 
 ### 11.3. Thông tin liên hệ
-- Tác giả: Nguyễn Văn A  
-- Email: nguyenvana@example.com  
-- GitHub: https://github.com/yourusername
+- Tác giả: Nguyễn Phước Đăng Quang 
+- Email: quangvinh6a4@gmail.com  
+- GitHub: https://github.com/duangwuang
