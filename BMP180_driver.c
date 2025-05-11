@@ -5,10 +5,11 @@
 #include <linux/device.h>
 #include <linux/uaccess.h>
 #include <linux/delay.h>
+#include <linux/cdev.h>
 
 #define DRIVER_NAME     "bmp180_driver"
 #define CLASS_NAME      "bmp180"
-#define DEVICE_NAME     "bmp180"
+#define DEVICE_NAME     "bmp180_driver"
 
 #define BMP180_ADDR             0x77
 #define BMP180_REG_ID           0xD0
@@ -30,7 +31,9 @@
 static struct i2c_client *bmp180_client;
 static struct class* bmp180_class = NULL;
 static struct device* bmp180_device = NULL;
+static struct cdev bmp180_cdev;
 static int major_number;
+static dev_t devt;
 
 // Calibration data
 static s16 AC1, AC2, AC3, B1, B2, MB, MC, MD;
@@ -84,31 +87,34 @@ static int bmp180_get_temperature(void)
     int X1 = ((UT - (int)AC6) * (int)AC5) >> 15;
     int X2 = ((int)MC << 11) / (X1 + (int)MD);
     int B5 = X1 + X2;
-    return T = (B5 + 8) >> 4; // in 0.1 °C
+    return (B5 + 8) >> 4; // in 0.1 °C
 }
 
 static int bmp180_get_pressure(void)
 {
+    int X1, X2, X3, B3, B5, B6;
+    unsigned int B4, B7;
+    int p;
+
     int UT = bmp180_read_raw_temp(bmp180_client);
     int UP = bmp180_read_raw_pressure(bmp180_client);
 
-    int X1 = ((UT - (int)AC6) * (int)AC5) >> 15;
-    int X2 = ((int)MC << 11) / (X1 + (int)MD);
-    int B5 = X1 + X2;
+    X1 = ((UT - (int)AC6) * (int)AC5) >> 15;
+    X2 = ((int)MC << 11) / (X1 + (int)MD);
+    B5 = X1 + X2;
 
-    int B6 = B5 - 4000;
+    B6 = B5 - 4000;
     X1 = (B2 * ((B6 * B6) >> 12)) >> 11;
     X2 = (AC2 * B6) >> 11;
-    int X3 = X1 + X2;
-    int B3 = (((AC1 * 4 + X3) << BMP180_OSS) + 2) >> 2;
+    X3 = X1 + X2;
+    B3 = (((AC1 * 4 + X3) << BMP180_OSS) + 2) >> 2;
 
     X1 = (AC3 * B6) >> 13;
     X2 = (B1 * ((B6 * B6) >> 12)) >> 16;
     X3 = ((X1 + X2) + 2) >> 2;
-    unsigned int B4 = (AC4 * (unsigned int)(X3 + 32768)) >> 15;
-    unsigned int B7 = ((unsigned int)UP - B3) * (50000 >> BMP180_OSS);
+    B4 = (AC4 * (unsigned int)(X3 + 32768)) >> 15;
+    B7 = ((unsigned int)UP - B3) * (50000 >> BMP180_OSS);
 
-    int p;
     if (B7 < 0x80000000)
         p = (B7 << 1) / B4;
     else
@@ -156,6 +162,7 @@ static int bmp180_release(struct inode *inodep, struct file *filep)
 }
 
 static struct file_operations fops = {
+    .owner = THIS_MODULE,
     .open = bmp180_open,
     .unlocked_ioctl = bmp180_ioctl,
     .release = bmp180_release,
@@ -163,7 +170,7 @@ static struct file_operations fops = {
 
 static int bmp180_probe(struct i2c_client *client, const struct i2c_device_id *id)
 {
-    int chip_id;
+    int chip_id, ret;
 
     bmp180_client = client;
     chip_id = i2c_smbus_read_byte_data(client, BMP180_REG_ID);
@@ -177,35 +184,47 @@ static int bmp180_probe(struct i2c_client *client, const struct i2c_device_id *i
         return -EIO;
     }
 
-    major_number = register_chrdev(0, DEVICE_NAME, &fops);
-    if (major_number < 0) {
-        printk(KERN_ERR "Failed to register a major number\n");
-        return major_number;
+    ret = alloc_chrdev_region(&devt, 0, 1, DEVICE_NAME);
+    if (ret < 0) {
+        printk(KERN_ERR "Failed to allocate char device region\n");
+        return ret;
+    }
+    major_number = MAJOR(devt);
+
+    cdev_init(&bmp180_cdev, &fops);
+    bmp180_cdev.owner = THIS_MODULE;
+    ret = cdev_add(&bmp180_cdev, devt, 1);
+    if (ret < 0) {
+        unregister_chrdev_region(devt, 1);
+        printk(KERN_ERR "Failed to add cdev\n");
+        return ret;
     }
 
     bmp180_class = class_create(THIS_MODULE, CLASS_NAME);
     if (IS_ERR(bmp180_class)) {
-        unregister_chrdev(major_number, DEVICE_NAME);
+        cdev_del(&bmp180_cdev);
+        unregister_chrdev_region(devt, 1);
         return PTR_ERR(bmp180_class);
     }
 
-    bmp180_device = device_create(bmp180_class, NULL, MKDEV(major_number, 0), NULL, DEVICE_NAME);
+    bmp180_device = device_create(bmp180_class, NULL, devt, NULL, DEVICE_NAME);
     if (IS_ERR(bmp180_device)) {
         class_destroy(bmp180_class);
-        unregister_chrdev(major_number, DEVICE_NAME);
+        cdev_del(&bmp180_cdev);
+        unregister_chrdev_region(devt, 1);
         return PTR_ERR(bmp180_device);
     }
 
-    printk(KERN_INFO "BMP180 driver installed successfully\n");
+    printk(KERN_INFO "BMP180 driver installed successfully with major %d\n", major_number);
     return 0;
 }
 
 static void bmp180_remove(struct i2c_client *client)
 {
-    device_destroy(bmp180_class, MKDEV(major_number, 0));
-    class_unregister(bmp180_class);
+    device_destroy(bmp180_class, devt);
     class_destroy(bmp180_class);
-    unregister_chrdev(major_number, DEVICE_NAME);
+    cdev_del(&bmp180_cdev);
+    unregister_chrdev_region(devt, 1);
     printk(KERN_INFO "BMP180 driver removed\n");
 }
 
@@ -234,11 +253,39 @@ static struct i2c_driver bmp180_driver = {
 
 static int __init bmp180_init(void)
 {
+    printk(KERN_INFO "Initializing BMP180 driver\n");
+    if(alloc_chrdev_region(&devt, 0, 1, DRIVER_NAME)<0){
+        printk("Device could not be allocated\n");
+        return -1;
+    }
+    printk("my-driver: Major: %d, Minor: %d\n", devt>>20, devt&0xfffff);
+    if ((bmp180_class = class_create(THIS_MODULE, CLASS_NAME)) == NULL) {
+        printk("Device class cannot be created\n");
+        unregister_chrdev_region(devt, 1);
+        return -1;
+    }
+    
+    if (device_create(bmp180_class, NULL, devt, NULL, DRIVER_NAME) == NULL) {
+        printk("Cannot create device file\n");
+        class_destroy(bmp180_class);
+        return -1;
+    }
+    cdev_init(&bmp180_cdev, &fops);
+    if (cdev_add(&bmp180_cdev, devt, 1) == 1) {
+        printk("Registering device failed\n");
+        device_destroy(bmp180_class, devt);
+        return -1;
+    }
     return i2c_add_driver(&bmp180_driver);
 }
 
 static void __exit bmp180_exit(void)
 {
+    printk(KERN_INFO "Exiting BMP180 driver\n");
+    cdev_del(&bmp180_cdev);
+    device_destroy(bmp180_class, devt);
+    class_destroy(bmp180_class);
+    unregister_chrdev_region(devt, 1);
     i2c_del_driver(&bmp180_driver);
 }
 
