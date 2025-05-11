@@ -10,7 +10,7 @@ int main() {
     int fd;
     int temp, pressure;
 
-    fd = open("/dev/bmp180", O_RDWR);
+    fd = open("/dev/bmp180_driver", O_RDWR);
     if (fd < 0) {
         perror("Failed to open BMP180 device");
         return -1;
