@@ -309,6 +309,6 @@ module_init(bmp180_init);
 module_exit(bmp180_exit);
 
 MODULE_LICENSE("GPL");
-MODULE_AUTHOR("Dang Quang - Sy Phu - Khanh Hung - Thanh Phuoc);
+MODULE_AUTHOR("Dang Quang - Sy Phu - Khanh Hung - Thanh Phuoc");
 MODULE_DESCRIPTION("A simple BMP180 char device driver");
 make
