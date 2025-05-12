@@ -237,6 +237,7 @@ static struct i2c_client *bmp180_manual_client = NULL;
 
 static int __init bmp180_init(void) {
     int ret;
+    struct i2c_adapter *adapter;
     printk(KERN_INFO "BMP180: Initializing driver...\n");
 
     major_number = register_chrdev(0, DEVICE_NAME, &fops);
@@ -266,8 +267,6 @@ static int __init bmp180_init(void) {
         unregister_chrdev(major_number, DEVICE_NAME);
         return ret;
     }
-
-    struct i2c_adapter *adapter;
 
     adapter = i2c_get_adapter(1);
     if (!adapter) {
@@ -311,4 +310,3 @@ module_exit(bmp180_exit);
 MODULE_LICENSE("GPL");
 MODULE_AUTHOR("Dang Quang - Sy Phu - Khanh Hung - Thanh Phuoc");
 MODULE_DESCRIPTION("A simple BMP180 char device driver");
-make
