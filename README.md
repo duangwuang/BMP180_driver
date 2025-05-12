@@ -16,7 +16,7 @@ Driver nhân Linux dành cho cảm biến nhiệt độ và áp suất BMP180 s�
 
 ### 3.1. Biên dịch driver
 
-Tạo file `bmp180_driver.c` và viết mã driver.
+Tạo file `BMP180_driver.c` và viết mã driver.
 
 Tạo Makefile:
 
@@ -36,16 +36,19 @@ Chạy lệnh:
 make
 ```
 
+```
+sudo make
+```
 ### 3.2. Nạp module
 
 ```
-sudo insmod bmp180_driver.ko
+sudo insmod BMP180_driver.ko
 ```
 
 ### 3.3. Gỡ bỏ module
 
 ```
-sudo rmmod bmp180_driver
+sudo rmmod BMP180_drive.kor
 ```
 
 ## 4. Tạo file thiết bị
@@ -58,8 +61,8 @@ sudo chmod 666 /dev/bmp180
 ## 5. API ioctl hỗ trợ
 
 ```
-#define BMP180_IOCTL_READ_TEMP _IOR('b', 1, int)
-#define BMP180_IOCTL_READ_PRESSURE _IOR('b', 2, int)
+#define BMP180_IOCTL_READ_TEMP_REAL _IOR('b', 1, int)
+#define BMP180_IOCTL_READ_PRESSURE_REAL _IOR('b', 2, int)
 ```
 
 ## 6. Chương trình người dùng mẫu
